@@ -6,7 +6,7 @@
 library(keras)       # For deep learning
 library(tidyverse)    # For read_csv and data manipulation
 library(caret)        # For train/test split
-
+library(tensorflow)
 # Read in the data
 movie_reviews <- read_csv("data/IMDB Dataset.csv")
 head(movie_reviews)

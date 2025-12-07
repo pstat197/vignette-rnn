@@ -1,0 +1,288 @@
+---
+title: "RNNs for Movie Review Sentiment Analysis"
+author: " Quinlan Wilson, Akhil Gorla,Ella Yang, Lorreta Lu, Anish Senthil"
+format: html
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+## Introduction
+
+In this vignette, we will build a Recurrent Neural Network (RNN) using an LSTM (Long Short-Term Memory) architecture to classify movie reviews as positive or negative.
+
+RNNs are a powerful deep learning architecture designed to work with sequential data, such as text, speech, or time-series information. Unlike traditional neural networks, RNNs preserve information across time steps, allowing them to understand context, order, and dependencies.
+
+Sentiment analysis is a classic application of natural language processing (NLP). In this example, we use an IMDB movie review dataset and train a model that learns to interpret word patterns and predict the sentiment of a review.
+
+#### What is a RNN
+
+A Recurrent Neural Network processes input one element at a time while maintaining a hidden "memory" state:
+
+$$
+h_t = \tanh \left( W_x x_t + W_h h_{t-1} + b \right)
+$$
+
+Where:
+
+- \(x_t\) is the input at time step \(t\)
+- \(h_t\) is the hidden state at time \(t\)
+- \(h_{t-1}\) is the previous hidden state
+- \(W_x, W_h\) are learned weight matrices
+- \(b\) is a bias vector
+
+LSTMs solve vanishing gradient problems by adding gates (input, forget, output) and maintaining a cell state.
+
+## Dataset and Preprocessing
+
+Before an RNN can learn from text, the text must be converted to numbers.  
+We encode sentiment labels (positive = 1, negative = 0), tokenize text, restrict vocabulary to 10,000 words, and pad or truncate sequences to a fixed length.
+
+```{r, warning=FALSE, message=FALSE}
+
+# This vignette requires TensorFlow and Keras.
+# If TensorFlow is not installed, run in the R console:
+#   install.packages("tensorflow")
+#   library(tensorflow)
+#   install_tensorflow()
+# This model is based on Keras
+# If the Keras not installed or automatically installed Keras3
+# Please change to Keras(Old version)
+#   install.packages("keras)
+#   library(keras)
+#   install_keras()
+
+library(keras) # for deep learning
+library(tidyverse) # for read_csv and data manipulation
+library(caret) # for train/test split
+library(tensorflow)
+
+set.seed(3434)
+# Read in the data
+movie_reviews <- read_csv("data/IMDB Dataset.csv")
+
+# Select the column with info on the emotion of review
+sentiment <- movie_reviews$sentiment
+
+# Check class balance (should be about equal in our case exactly equal)
+table(sentiment)
+
+# Convert labels to binary (1 = positive, 0 = negative)
+movie_reviews$sentiment_binary <- ifelse(movie_reviews$sentiment == "positive", 1, 0)
+
+# Tokenization (converting text into integers)
+# Neural networks can't work with raw text so tokenization is used.
+# On a basic level tokenization changes each word into an integer based on frequency. 
+# We only use the top 10k most frequent words
+max_words <- 10000
+
+# RNNs need all sequences to be the same length.
+# So by choosing 500 if a review has less than 500 words
+# those extras are removed and if it has less than 500
+# we add zeros to make it the same length. 
+max_len <- 250
+review_len <- sapply(strsplit(movie_reviews$review, " "), length)
+hist(review_len, breaks = 50, main="Distribution of Review Lengths", xlab = "Words per review", xlim = c(0, 1250))
+summary(review_len)
+
+# Create a tokenizer and fit it to our review text
+tokenizer <- text_tokenizer(num_words = max_words)
+tokenizer %>% fit_text_tokenizer(movie_reviews$review)
+
+word_counts <- tokenizer$word_counts
+word_freq <- sort(unlist(word_counts), decreasing = T)
+# Top 20 words
+head(word_freq, 20)
+
+# How many words appear only once or twice
+sum(word_freq == 1)
+sum(word_freq == 2)
+
+# Since only 52k words appear once and 15k twice setting
+# max words to 10k makes sense as these rare words add
+# much to our classification model.
+# Convert each review to a sequence of integers
+sequences <- texts_to_sequences(tokenizer, movie_reviews$review)
+
+# Make every sequences have the same length
+x <- pad_sequences(sequences = sequences, maxlen = max_len)
+y <- movie_reviews$sentiment_binary
+
+# split the dataset into training and testing (80/20)
+train_index <- createDataPartition(y, p = 0.8, list = F)
+x_train <- x[train_index, ]
+x_test <- x[-train_index, ]
+y_train <- y[train_index]
+y_test <- y[-train_index]
+```
+
+The dataset contains IMDB movie reviews with text and sentiment labels *(positive/negative)*. We first convert the sentiment labels into binary values, mapping positive $\rightarrow$ 1 and negative $\rightarrow$ 0.
+
+Next, we perform tokenization, which converts each word into an integer index based on its frequency or identity. For example:
+
+- “the" $\rightarrow$ 666757
+
+- "movie" $\rightarrow$ 87050
+
+- "film" $\rightarrow$ 77678
+
+This step transforms variable-length text into sequences of integers that the RNN can process.
+
+Because reviews differ in length, we then pad or truncate each sequence to a fixed maximum length. Reviews longer than the limit are cut, and shorter ones are padded with zeros. This ensures a uniform input shape for the model.
+
+Finally, we restrict the vocabulary to the top 10,000 most frequent words, removing extremely rare words that add noise and do not help with training.
+
+## Model Architecture: Embedding + Bidirectional LSTM
+
+Before sequences enter the LSTM, they pass through an embedding layer that learns a dense vector for each word.
+
+The embedding captures semantic similarity; e.g., "good" is closer to "great" than "terrible".
+
+We use 64-dimensional embedding.  
+The output for each review is a matrix (sequence length $\times$ 64).
+
+```{r}
+embedding_dim <- 64
+
+model <- keras_model_sequential() %>%
+  layer_embedding(
+    input_dim  = max_words,
+    output_dim = embedding_dim
+
+  ) %>%
+  bidirectional(
+    layer_lstm(units = 64, dropout = 0.2, recurrent_dropout = 0.2)
+  ) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+summary(model)
+```
+Model architecture:
+
+1. **Embedding layer** - converts word indices to 64-dimensional vectors.  
+2. **Bidirectional LSTM** - outputs a 128-dimensional representation.  
+3. **Dense output layer** - sigmoid activation gives probability of positive sentiment.
+
+This allows capturing word meaning, order, and context.
+
+#### Training the Model
+
+We train the model using:
+
+- Adam optimizer  
+- Binary cross-entropy loss  
+
+Training involves multiple epochs, with a validation split to monitor overfitting.
+```{r, eval=FALSE}
+# Compile the model: Adam optimizer + binary cross-entropy for binary labels
+model %>% compile(
+  optimizer = "adam",
+  loss = "binary_crossentropy",
+  metrics = "accuracy"
+)
+
+# Train the model for 3 epochs.
+# validation_split = 0.2 uses 20% of the training data as validation
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 3,
+  batch_size = 30,
+  validation_split = 0.2
+)
+
+# Plot accuracy and loss over epochs (passes)
+plot(history)
+
+```
+We compile the model with the Adam optimizer and binary cross-entropy loss, then train for 3 epochs while monitoring validation performance.
+
+Training history shows changes in accuracy and loss. Ideally, both training and validation loss decrease or stabilize.
+
+#### Visual Word Embeddings
+
+We extract the learned embedding matrix and apply PCA to reduce 64 dimensions to 2 for visualization.
+
+```{r, eval=FALSE}
+# Extract the embedding matrix from the first layer
+embeddings <- get_weights(model$layers[[1]])[[1]]
+
+# Perform PCA on a subset of embeddings (skip index 1 which is usually padding)
+pca_res <- prcomp(embeddings[2:1000, ])
+
+# Take the first 2 principal components
+pca_df <- data.frame(
+  PC1 = pca_res$x[,1],
+  PC2 = pca_res$x[,2],
+  word = names(tokenizer$word_index)[1:999]
+)
+
+# Scatterplot of words in the 2D PCA space
+ggplot(pca_df, aes(x = PC1, y = PC2, label=word)) +
+  geom_text(size=3) +
+  ggtitle("Word Embeddings PCA Projection")
+```
+
+We project the 64-dimensional word embeddings down to 2 dimensions using PCA. Words with similar sentiment (e.g., great, wonderful, favorite vs awful, worst, terrible) tend to cluster together, while neutral words lie near the center.
+
+A scatterplot then reveals:
+
+- positive sentiment words clustered together  
+- negative sentiment words near each other  
+- common neutral words in the center  
+
+This helps us interpret learned semantic structures.
+
+#### Evaluation
+
+After training, we now evaluate the trained model on the held-out test set to assess how well it generalizes to unseen reviews.
+
+```{r, eval=FALSE}
+# Evaluate the model on the held-out test data
+model %>% evaluate(x_test, y_test)
+```
+
+Metrics returned include accuracy and loss.  
+A good model should achieve high accuracy and low loss on unseen data.
+
+#### Predicting Sentiment on New Examples
+
+We test the model on new sentences (tokenized and padded like training data).  
+Predictions > 0.5 $\rightarrow$ positive.
+
+Examples:
+
+- "This is the best movie I have ever seen!" $\rightarrow$ positive  
+- "The acting in this movie was horrible." $\rightarrow$ negative  
+
+This shows generalization to new text.
+```{r, eval=FALSE}
+# Example sentences not seen during training
+examples <- c(
+  "This is the best movie I have ever seen!",
+  "The acting in this movie was horrible."
+)
+
+# Tokenize and pad the example sentences in the same way as the training data
+
+examples_seq <- texts_to_sequences(tokenizer, examples)
+examples_pad <- pad_sequences(examples_seq, maxlen= max_len)
+
+# Predict sentiment probabilities
+predictions <- model %>% predict(examples_pad)
+
+# Convert probabilities to class labels
+pred_label <- ifelse(predictions > 0.5, "positive", "negative")
+pred_label
+```
+
+#### Limitations on Model
+
+LSTMs have limitations:
+
+- Cannot handle misspellings or unseen words  
+- Long documents may still lose information  
+- No attention mechanism; all words weighted similarly  
+
+More advanced models (GRUs, Transformers, BERT, GPT) outperform LSTMs on modern NLP tasks.
+
+But LSTMs remain excellent for learning sequence modeling fundamentals.
