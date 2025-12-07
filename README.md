@@ -14,21 +14,22 @@ This vignette provides a practical introduction to Recurrent Neural Networks (RN
 
 # Repository Contents
 This repository is organized as follows:
-root directory
-|-- data/
-| |-- IMDB Dataset.csv # raw IMDB movie review dataset used for training and evaluation
-| |-- archive.zip # original compressed dataset download
-| |-- .DS_Store # auto-generated system file (not used)
-|
-|-- scripts/
-| |-- LorrettaTest.R # exploratory R script for early testing
-| |-- ModelDraftQuinlan.R # draft RNN/LSTM model implementation in R (Preferred)
-| |-- ModelDraftAkhil.py # draft GRU sentiment model implemented in Python
-|
-|-- draft.ipynb # initial exploratory notebook for model investigations
-|-- vignette-rnn.Rproj # RStudio project file for this vignette
-|-- README.md # repository documentation
-|-- .gitignore # files and folders excluded from version control
+
+    root directory
+    |-- data/
+    |   |-- IMDB Dataset.csv        # raw IMDB movie review dataset used for training and evaluation
+    |   |-- archive.zip             # original compressed dataset download
+    |   |-- .DS_Store               # auto-generated system file (not used)
+    |
+    |-- scripts/
+    |   |-- LorrettaTest.R          # exploratory R script for early testing
+    |   |-- ModelDraftQuinlan.R     # draft RNN/LSTM model implementation in R (Preferred)
+    |   |-- ModelDraftAkhil.py      # draft GRU sentiment model implemented in Python
+    |
+    |-- draft.ipynb                 # initial exploratory notebook for model investigations
+    |-- vignette-rnn.Rproj          # RStudio project file for this vignette
+    |-- README.md                   # repository documentation
+    |-- .gitignore                  # files and folders excluded from version control
 
 - **data/** contains the raw IMDB movie review dataset and any processed files used during modeling.  
 - **scripts/** includes all code required to replicate model training, embedding extraction, PCA visualization, and predictions.  
