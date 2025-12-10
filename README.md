@@ -6,7 +6,7 @@ Vignette on building a bidirectional LSTM model for sentiment analysis using the
 - Quinlan Wilson
 - Akhil Gorla
 - Ella Yang
-- Lorreta Lu
+- Lorretta Lu
 - Anish Senthil  
 
 ## Abstract
@@ -37,6 +37,7 @@ This repository is organized as follows:
     ├── Vignette_RNN.html                # rendered version of the vignette
     ├── vignette-rnn.Rproj               # RStudio project file
     ├── README.md                        # repository documentation
+    ├── LICENSE                          # copyright license
     └── .gitignore                       # ignored files list
 
 
