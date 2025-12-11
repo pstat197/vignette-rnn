@@ -10,11 +10,25 @@ execute:
 
 ## Introduction
 
-In this vignette, we will build a Recurrent Neural Network (RNN) using an LSTM (Long Short-Term Memory) architecture to classify movie reviews as positive or negative.
+In this vignette, we develop a Recurrent Neural Network (RNN) using a Long Short-Term Memory (LSTM) architecture to classify IMDB movie reviews as either positive or negative. Sentiment analysis is one of the most common applications of natural language processing (NLP) and provides an excellent setting for understanding how sequential models learn patterns, context, and emotional tone in text.
 
-RNNs are a powerful deep learning architecture designed to work with sequential data, such as text, speech, or time-series information. Unlike traditional neural networks, RNNs preserve information across time steps, allowing them to understand context, order, and dependencies.
+Traditional feedforward neural networks treat every input as independent, making them poorly suited to sequential data where the order of information matters. RNNs solve this by incorporating a hidden state that evolves as the model processes each word, giving the network a form of “memory.” LSTMs extend this ability through specialized gating mechanisms that allow the model to selectively retain, overwrite, or forget information over long sequences—helping them overcome the vanishing gradient problem.
 
-Sentiment analysis is a classic application of natural language processing (NLP). In this example, we use an IMDB movie review dataset and train a model that learns to interpret word patterns and predict the sentiment of a review.
+In this vignette, we walk through the entire modeling pipeline:
+
+- loading and exploring the dataset
+
+- tokenizing text and preparing input sequences
+
+- building a model using an Embedding layer + Bidirectional LSTM
+
+- training and evaluating the network
+
+- analyzing learned word embeddings
+
+- generating predictions on new text
+
+- discussing model limitations
 
 #### What is a RNN
 
@@ -32,7 +46,17 @@ Where:
 - \(W_x, W_h\) are learned weight matrices
 - \(b\) is a bias vector
 
-LSTMs solve vanishing gradient problems by adding gates (input, forget, output) and maintaining a cell state.
+This recurrent computation allows the model to “remember” earlier words while processing later ones.
+
+However, simple RNNs cannot remember information reliably across long sequences due to vanishing/ exploding gradients. LSTMs address this by using a cell state and three gates:
+
+- input gate — decides what new information to write
+
+- forget gate — decides what to erase
+
+- output gate — decides what information becomes visible
+
+Because sentiment often depends on long-range dependencies (“I thought the movie would be great, but it was awful”), LSTMs are far more effective than basic RNNs.
 
 ## Dataset and Preprocessing
 
@@ -135,12 +159,32 @@ Finally, we restrict the vocabulary to the top 10,000 most frequent words, remov
 
 ## Model Architecture: Embedding + Bidirectional LSTM
 
-Before sequences enter the LSTM, they pass through an embedding layer that learns a dense vector for each word.
+RNNs work on sequences of numbers, but these numbers (word indices) have no meaningful geometric structure. The first layer in our model is therefore an Embedding layer, which transforms each integer token into a dense vector that captures semantic meaning.
 
-The embedding captures semantic similarity; e.g., "good" is closer to "great" than "terrible".
+Each word is mapped to a 64-dimensional vector that the model learns during training. These vectors are not random—they encode relationships such as:
+
+- “good” and “great” appearing in similar vector directions
+
+- “boring” and “awful” clustering in negative sentiment regions
+
+- functional words (“the”, “and”, “to”) lying near the origin
+
+The embedding layer lets the model understand words in a continuous space rather than treating them as unrelated symbols.
 
 We use 64-dimensional embedding.  
 The output for each review is a matrix (sequence length $\times$ 64).
+
+This means:
+
+- one LSTM reads the sequence from left to right
+
+- another LSTM reads the sequence from right to left
+
+- their outputs are concatenated, giving a 128-dimensional representation
+
+This structure captures context from both past and future words.
+
+A final dense layer with a sigmoid activation maps the representation to a probability between 0 and 1, indicating how likely the review is positive.
 
 ```{r}
 embedding_dim <- 64
@@ -200,7 +244,23 @@ Training history shows changes in accuracy and loss. Ideally, both training and 
 
 #### Visual Word Embeddings
 
-We extract the learned embedding matrix and apply PCA to reduce 64 dimensions to 2 for visualization.
+One of the most fascinating components of deep NLP models is the embedding matrix. After training, each of the 10,000 words has a learned 64-dimensional representation. To visualize these embeddings:
+
+- Extract the embedding matrix from the trained model
+
+- Apply Principal Component Analysis (PCA) to compress the vectors into 2 dimensions
+
+- Plot a subset of words in the 2D plane
+
+Surprisingly, even this crude dimensionality reduction often reveals clear structure:
+
+- Positive sentiment words form clusters (e.g., “wonderful”, “great”, “brilliant”).
+
+- Negative sentiment words group together in a different region (“worst”, “awful”, “boring”).
+
+- High-frequency neutral words (“the”, “and”, “it”) gather around the center.
+
+This emergent structure is learned directly from the review data—no manual labeling is required. It demonstrates how the embedding layer acts as the model’s internal representation of meaning.
 
 ```{r, eval=FALSE}
 # Extract the embedding matrix from the first layer
@@ -222,13 +282,6 @@ ggplot(pca_df, aes(x = PC1, y = PC2, label=word)) +
   ggtitle("Word Embeddings PCA Projection")
 ```
 
-We project the 64-dimensional word embeddings down to 2 dimensions using PCA. Words with similar sentiment (e.g., great, wonderful, favorite vs awful, worst, terrible) tend to cluster together, while neutral words lie near the center.
-
-A scatterplot then reveals:
-
-- positive sentiment words clustered together  
-- negative sentiment words near each other  
-- common neutral words in the center  
 
 This helps us interpret learned semantic structures.
 
@@ -246,7 +299,13 @@ A good model should achieve high accuracy and low loss on unseen data.
 
 #### Predicting Sentiment on New Examples
 
-We test the model on new sentences (tokenized and padded like training data).  
+Once trained, the model can classify any new review by:
+
+- Tokenizing the input text with the same tokenizer
+
+- Padding to the standard sequence length
+
+- Passing the vector through the mode
 Predictions > 0.5 $\rightarrow$ positive.
 
 Examples:
@@ -277,12 +336,22 @@ pred_label
 
 #### Limitations on Model
 
-LSTMs have limitations:
+While LSTMs were state-of-the-art for many years, they have notable limitations:
 
-- Cannot handle misspellings or unseen words  
-- Long documents may still lose information  
-- No attention mechanism; all words weighted similarly  
+1. Difficulty with very long documents
 
-More advanced models (GRUs, Transformers, BERT, GPT) outperform LSTMs on modern NLP tasks.
+Even with gating, long-range dependencies eventually fade. Sentiment expressed at the end of a long review may outweigh earlier statements, but LSTMs may not fully retain early context.
 
-But LSTMs remain excellent for learning sequence modeling fundamentals.
+2. No attention mechanism
+
+All words are treated with roughly equal importance. The model does not learn which specific phrases drive sentiment unless they appear consistently.
+
+3. Word-level tokenization loses nuance
+
+Misspellings (“gud”, “goood”), unseen slang, and sarcasm often trip up LSTMs that rely on fixed vocabulary indexing.
+
+4. Transformers outperform LSTMs
+
+Modern NLP models (BERT, DistilBERT, RoBERTa, GPT) use self-attention to capture global relationships more efficiently and handle longer text with far greater accuracy.
+
+Despite these limitations, LSTMs remain excellent pedagogical models for understanding sequence modeling.
